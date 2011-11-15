@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="shutdown_reboot_options">
+        <item>@string/reboot</item>
+        <item>@string/reboot_recovery</item>
+        <item>@string/reboot_download</item>
+    </array>
+    <string-array name="shutdown_reboot_actions">
+        <item>now</item>
+        <item>recovery</item>
+        <item>download</item>
+    </string-array>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="status_bar_edge_ignore">5.0dip</dimen>
+    <dimen name="quickpanel_quick_settings_single_text_padding">82.0px</dimen>
+    <dimen name="quickpanel_quick_settings_double_text_padding">67.0px</dimen>
+</resources>

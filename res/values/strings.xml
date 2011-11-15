@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_label">Status Bar</string>
+    <string name="status_bar_clear_all_button">Clear</string>
+    <string name="status_bar_no_notifications_title">No notifications</string>
+    <string name="status_bar_ongoing_events_title">Ongoing</string>
+    <string name="status_bar_latest_events_title">Notifications</string>
+    <string name="battery_low_title">Please connect charger</string>
+    <string name="battery_low_subtitle">The battery is getting low:</string>
+    <string name="battery_low_percent_format">%d%% or less remaining.</string>
+    <string name="battery_low_why">Battery use</string>
+    <string name="usb_device_permission_prompt">Allow the application %1$s to access the USB device?</string>
+    <string name="usb_accessory_permission_prompt">Allow the application %1$s to access the USB accessory?</string>
+    <string name="usb_device_confirm_prompt">Open %1$s when this USB device is connected?</string>
+    <string name="usb_accessory_confirm_prompt">Open %1$s when this USB accessory is connected?</string>
+    <string name="usb_accessory_uri_prompt">No installed applications work with this USB accessory. Learn more about this accessory at %1$s</string>
+    <string name="title_usb_accessory">USB accessory</string>
+    <string name="label_view">View</string>
+    <string name="always_use_device">Use by default for this USB device</string>
+    <string name="always_use_accessory">Use by default for this USB accessory</string>
+    <string name="quickpanel_wifi_text">Wi-Fi</string>
+    <string name="quickpanel_bluetooth_text">Bluetooth</string>
+    <string name="quickpanel_gps_text">GPS</string>
+    <string name="quickpanel_sound_text">Sound</string>
+    <string name="quickpanel_sound_vibration_text">"Sound
+Vibration"</string>
+    <string name="quickpanel_silent_text">Silent</string>
+    <string name="quickpanel_vibration_text">Vibration</string>
+    <string name="quickpanel_rotation_text">"Auto
+rotation"</string>
+    <string name="quickpanel_error_text">Error</string>
+    <string name="quickpanel_silent_mode">"Silent
+mode"</string>
+    <string name="lowbattery">Battery low</string>
+    <string name="critical_lowbattery">Battery critically low</string>
+    <string name="charging_ac">Exit unused applications in Task Manager. Continued usage while charging may prevent efficient charging</string>
+    <string name="charging_no_ac">Connect to a plug socket to charge device and exit unused applications in Task Manager. Continued usage while charging may prevent efficient charging</string>
+    <string name="interrupt_charge_title">Info</string>
+    <string name="notchargebattery">Battery disconnected</string>
+    <string name="dischargebattery">Charging paused. Battery temperature too high or too low</string>
+    <string name="discharge_battery_overheat">"Charging paused.
+Battery temperature too high"</string>
+    <string name="discharge_battery_cold">"Charging paused.
+Battery temperature too low"</string>
+    <string name="dischargetitle">"Discharging</string>
+    <string name="fullchargetitle">Info</string>
+    <string name="fullchargebattery">"Battery fully charged.
+Unplug charger"</string>
+    <string name="airplane_mode">In Flight mode</string>
+    <string name="battery_save_title">Power saving mode</string>
+    <string name="battery_save_text">Battery level below %s. Power saving will run. Continue?</string>
+    <string name="wimax_wifi_warning">Wi-Fi is now connected. Turn Wi-Fi off to connect 4G network.</string>
+    <string name="proxy_error">Attention</string>
+    <string name="wimax_wifi_warning2">4G will turn off when Wi-Fi is connected. Continue?</string>
+    <string name="quickpanel_wimax_text">4G</string>
+    <string name="quickpanel_dc_text" />
+    <string name="quickpanel_mobiledata_text">Data</string>
+    <string name="quickpanel_flight_text">"Flight
+Mode"</string>
+    <string name="quickpanel_sync_text">Sync</string>
+    <string name="quickpanel_vibrate_text">Vibrate</string>
+    <string name="quickpanel_brightness_text">Brightness</string>
+    <string name="quickpanel_flashlight_text">Flashlight</string>
+    <string name="quickpanel_reboot_text">Reboot</string>
+    <string name="quickpanel_shutdown_text">Shutdown</string>
+    <string name="hamster">Romanhawk</string>
+    <string name="reboot">Reboot</string>
+    <string name="reboot_recovery">Recovery</string>
+    <string name="reboot_download">Download</string>
+    <string name="shutdown_confirm">Your phone will shut down.</string>
+    <string name="screen_timeout_seconds">Screen timeout set to: %d second(s)</string>
+    <string name="screen_timeout_minutes">Screen timeout set to: %d minute(s)</string>
+    <string name="screen_timeout_hours">Screen timeout set to: %d hour(s)</string>
+    <string name="quickpanel_screen_timeout_text">Timeout</string>
+    <string name="quickpanel_lockscreen_text">Lockscreen</string>
+</resources>
