@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <bool name="config_hspa_data_distinguishable">true</bool>
-    <bool name="config_status_bar_brightness">true</bool>
-    <bool name="config_always_showing_low_battery_popup">true</bool>
-</resources>

@@ -27,12 +27,12 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.app.StatusBarManager;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
-import android.database.ContentObservable;
 import android.database.ContentObserver;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -64,6 +64,7 @@ import android.view.WindowManagerImpl;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RemoteViews;
 import android.widget.ScrollView;
@@ -77,21 +78,25 @@ import com.android.systemui.R;
 import com.android.systemui.statusbar.policy.StatusBarPolicy;
 import com.android.systemui.statusbar.quickpanel.QuickSettingsView;
 
-
-
 public class StatusBarService extends Service implements CommandQueue.Callbacks {
+
     static final String TAG = "StatusBarService";
     static final boolean SPEW_ICONS = false;
     static final boolean SPEW = false;
 
-    public static final String ACTION_STATUSBAR_START
-            = "com.android.internal.policy.statusbar.START";
+    public static final String ACTION_STATUSBAR_START = "com.android.internal.policy.statusbar.START";
 
     static final int EXPANDED_LEAVE_ALONE = -10000;
     static final int EXPANDED_FULL_OPEN = -10001;
 
     private static final int MSG_ANIMATE = 1000;
     private static final int MSG_ANIMATE_REVEAL = 1001;
+    private static final int MSG_SAMSUNG_MAGIC = 2000;
+
+    private int mIsBrightNessMode = 0;
+    private boolean mIsStatusBarBrightNess;
+    private boolean mIsAutoBrightNess;
+    private BrightNessContentObserver mBrightNessContentObs = new BrightNessContentObserver();
 
     StatusBarPolicy mIconPolicy;
 
@@ -154,8 +159,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     boolean mTracking;
     VelocityTracker mVelocityTracker;
 
-    static final int ANIM_FRAME_DURATION = (1000/60);
-    public static final int MSG_SAMSUNG_MAGIC = 0x7d0;
+    static final int ANIM_FRAME_DURATION = (1000 / 60);
 
     boolean mAnimating;
     long mCurAnimationTime;
@@ -170,9 +174,17 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
     // for disabling the status bar
     int mDisabled = 0;
-    private LinearLayout mMiniCon;
+    LinearLayout mMiniCon;
+    NotificationData mMiniConData = new NotificationData();
+
+    private Context mContext;
+
+    // music
+    MusicControls mMusicControls;
+    public static ImageView mMusicToggleButton;
 
     private class ExpandedDialog extends Dialog {
+
         ExpandedDialog(Context context) {
             super(context, com.android.internal.R.style.Theme_Light_NoTitleBar);
         }
@@ -181,26 +193,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         public boolean dispatchKeyEvent(KeyEvent event) {
             boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
             switch (event.getKeyCode()) {
-            case KeyEvent.KEYCODE_BACK:
-                if (!down) {
-                    animateCollapse();
-                }
-                return true;
+                case KeyEvent.KEYCODE_BACK:
+                    if (!down) {
+                        animateCollapse();
+                    }
+                    return true;
             }
             return super.dispatchKeyEvent(event);
         }
     }
-    
-    int mIsBrightNessMode = 0;
-    boolean mIsStatusBarBrightNess = false;
-    
-    BrightNessContentObserver mBrightNessContentObs = new BrightNessContentObserver();
-
 
     @Override
     public void onCreate() {
         // First set up our views and stuff.
-        mDisplay = ((WindowManager)getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
+        mDisplay = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         makeStatusBarView(this);
 
         // Connect in to the status bar manager service
@@ -208,8 +214,8 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         ArrayList<IBinder> notificationKeys = new ArrayList<IBinder>();
         ArrayList<StatusBarNotification> notifications = new ArrayList<StatusBarNotification>();
         mCommandQueue = new CommandQueue(this, iconList);
-        mBarService = IStatusBarService.Stub.asInterface(
-                ServiceManager.getService(Context.STATUS_BAR_SERVICE));
+        mBarService = IStatusBarService.Stub.asInterface(ServiceManager
+                .getService(Context.STATUS_BAR_SERVICE));
         try {
             mBarService.registerStatusBar(mCommandQueue, iconList, notificationKeys, notifications);
         } catch (RemoteException ex) {
@@ -219,7 +225,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         // Set up the initial icon state
         int N = iconList.size();
         int viewIndex = 0;
-        for (int i=0; i<N; i++) {
+        for (int i = 0; i < N; i++) {
             StatusBarIcon icon = iconList.getIcon(i);
             if (icon != null) {
                 addIcon(iconList.getSlot(i), i, viewIndex, icon);
@@ -230,12 +236,12 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         // Set up the initial notification state
         N = notificationKeys.size();
         if (N == notifications.size()) {
-            for (int i=0; i<N; i++) {
+            for (int i = 0; i < N; i++) {
                 addNotification(notificationKeys.get(i), notifications.get(i));
             }
         } else {
-            Log.wtf(TAG, "Notification list length mismatch: keys=" + N
-                    + " notifications=" + notifications.size());
+            Log.wtf(TAG, "Notification list length mismatch: keys=" + N + " notifications="
+                    + notifications.size());
         }
 
         // Put up the view
@@ -247,11 +253,16 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         mIsStatusBarBrightNess = getResources().getBoolean(R.bool.config_status_bar_brightness);
         if (mIsStatusBarBrightNess) {
             mIsAutoBrightNess = checkAutoBrightNess();
+            getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor("screen_brightness_mode"), false,
+                    mBrightNessContentObs);
+            updatePropFactorValue();
         }
 
-        getContentResolver().registerContentObserver(
-                Settings.System.getUriFor("screen_brightness_mode"), false, mBrightNessContentObs);
-        updatePropFactorValue();
+        mContext = getApplicationContext();
+        SettingsObserver settingsObserver = new SettingsObserver(mHandler);
+        settingsObserver.observe();
+
     }
 
     @Override
@@ -275,13 +286,12 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         mIconSize = res.getDimensionPixelSize(com.android.internal.R.dimen.status_bar_icon_size);
 
-        ExpandedView expanded = (ExpandedView)View.inflate(context,
-                R.layout.status_bar_expanded, null);
+        ExpandedView expanded = (ExpandedView) View.inflate(context, R.layout.status_bar_expanded,
+                null);
         expanded.mService = this;
 
-        StatusBarView sb = (StatusBarView)View.inflate(context, R.layout.status_bar, null);
+        StatusBarView sb = (StatusBarView) View.inflate(context, R.layout.status_bar, null);
         sb.mService = this;
-        
 
         // figure out which pixel-format to use for the status bar.
         mPixelFormat = PixelFormat.TRANSLUCENT;
@@ -291,23 +301,23 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
 
         mStatusBarView = sb;
-        mStatusIcons = (LinearLayout)sb.findViewById(R.id.statusIcons);
-        mNotificationIcons = (IconMerger)sb.findViewById(R.id.notificationIcons);
-        mIcons = (LinearLayout)sb.findViewById(R.id.icons);
+        mStatusIcons = (LinearLayout) sb.findViewById(R.id.statusIcons);
+        mNotificationIcons = (IconMerger) sb.findViewById(R.id.notificationIcons);
+        mIcons = (LinearLayout) sb.findViewById(R.id.icons);
         mTickerView = sb.findViewById(R.id.ticker);
-        mDateView = (DateView)sb.findViewById(R.id.date);
+        mDateView = (DateView) sb.findViewById(R.id.date);
 
         mExpandedDialog = new ExpandedDialog(context);
         mExpandedView = expanded;
         mExpandedContents = expanded.findViewById(R.id.notificationLinearLayout);
-        mOngoingTitle = (TextView)expanded.findViewById(R.id.ongoingTitle);
-        mOngoingItems = (LinearLayout)expanded.findViewById(R.id.ongoingItems);
-        mLatestTitle = (TextView)expanded.findViewById(R.id.latestTitle);
-        mLatestItems = (LinearLayout)expanded.findViewById(R.id.latestItems);
-        mNoNotificationsTitle = (TextView)expanded.findViewById(R.id.noNotificationsTitle);
-        mClearButton = (TextView)expanded.findViewById(R.id.clear_all_button);
+        mOngoingTitle = (TextView) expanded.findViewById(R.id.ongoingTitle);
+        mOngoingItems = (LinearLayout) expanded.findViewById(R.id.ongoingItems);
+        mLatestTitle = (TextView) expanded.findViewById(R.id.latestTitle);
+        mLatestItems = (LinearLayout) expanded.findViewById(R.id.latestItems);
+        mNoNotificationsTitle = (TextView) expanded.findViewById(R.id.noNotificationsTitle);
+        mClearButton = (TextView) expanded.findViewById(R.id.clear_all_button);
         mClearButton.setOnClickListener(mClearButtonListener);
-        mScrollView = (ScrollView)expanded.findViewById(R.id.scroll);
+        mScrollView = (ScrollView) expanded.findViewById(R.id.scroll);
         mNotificationLinearLayout = expanded.findViewById(R.id.notificationLinearLayout);
 
         mExpandedView.setVisibility(View.GONE);
@@ -316,12 +326,12 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         mTicker = new MyTicker(context, sb);
 
-        TickerView tickerView = (TickerView)sb.findViewById(R.id.tickerText);
+        TickerView tickerView = (TickerView) sb.findViewById(R.id.tickerText);
         tickerView.mTicker = mTicker;
 
-        mTrackingView = (TrackingView)View.inflate(context, R.layout.status_bar_tracking, null);
+        mTrackingView = (TrackingView) View.inflate(context, R.layout.status_bar_tracking, null);
         mTrackingView.mService = this;
-        mCloseView = (CloseDragHandle)mTrackingView.findViewById(R.id.close);
+        mCloseView = (CloseDragHandle) mTrackingView.findViewById(R.id.close);
         mCloseView.mService = this;
 
         mEdgeBorder = res.getDimensionPixelSize(R.dimen.status_bar_edge_ignore);
@@ -336,36 +346,60 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(mBroadcastReceiver, filter);
-        
-        QuickSettingsView qsv = (QuickSettingsView)View.inflate(context, R.layout.quickpanel_quick_settings, null);
+
+        QuickSettingsView qsv = (QuickSettingsView) View.inflate(context,
+                R.layout.quickpanel_quick_settings, null);
         mExpandedView.addView(qsv, 0);
+
         
+
+        // if (useCustomMusic) {
+        // music
+        mMusicToggleButton = (ImageView) expanded.findViewById(R.id.music_toggle_button);
+        mMusicToggleButton.setOnClickListener(mMusicToggleButtonListener);
+        mMusicControls = (MusicControls) expanded.findViewById(R.id.exp_music_controls);
+        // } else {
+
         mMiniCon = new LinearLayout(context);
-        mMiniCon.setOrientation(1);
+        mMiniCon.setOrientation(LinearLayout.VERTICAL);
+
+        useCustomMusic = Settings.System.getInt(getContentResolver(),
+                "tweaks_use_custom_music_controls", 1) == 1;
+        if (!useCustomMusic) {
+            ((LinearLayout) mExpandedView.findViewById(R.id.notificationLinearLayout)).addView(
+                    mMiniCon, 0);
+            mMusicToggleButton.setVisibility(View.GONE);
+            mMusicControls.disable();
+        }
+
+//        mCallOnGoingView = (CallOnGoingView) View.inflate(context,
+//                R.layout.status_bar_call_ongoing, null);
         
-        ((LinearLayout)mExpandedView.findViewById(R.id.notificationLinearLayout)).addView(mMiniCon);
-        
-        mCallOnGoingView = (CallOnGoingView) View.inflate(context, R.layout.status_bar_call_ongoing, null);
+        mCallOnGoingView = (CallOnGoingView) expanded.findViewById(R.id.call_controls);
+        mCallOnGoingView.setVisibility(View.GONE);
         mCallOnGoingView.mService = this;
     }
+    boolean useCustomMusic = true;
 
     protected void addStatusBarView() {
         Resources res = getResources();
-        final int height= res.getDimensionPixelSize(com.android.internal.R.dimen.status_bar_height);
+        final int height = res
+                .getDimensionPixelSize(com.android.internal.R.dimen.status_bar_height);
 
         final StatusBarView view = mStatusBarView;
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                height,
+                ViewGroup.LayoutParams.MATCH_PARENT, height,
                 WindowManager.LayoutParams.TYPE_STATUS_BAR,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                    | WindowManager.LayoutParams.FLAG_TOUCHABLE_WHEN_WAKING,
-                PixelFormat.RGBX_8888);
+                        | WindowManager.LayoutParams.FLAG_TOUCHABLE_WHEN_WAKING,
+                PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.FILL_HORIZONTAL;
         lp.setTitle("StatusBar");
         lp.windowAnimations = com.android.internal.R.style.Animation_StatusBar;
-
+        mStatusBarView.setVisibility(View.GONE);
         WindowManagerImpl.getDefault().addView(view, lp);
+
+        mMusicControls.setupControls();
     }
 
     public void addIcon(String slot, int index, int viewIndex, StatusBarIcon icon) {
@@ -378,13 +412,13 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         mStatusIcons.addView(view, viewIndex, new LinearLayout.LayoutParams(mIconSize, mIconSize));
     }
 
-    public void updateIcon(String slot, int index, int viewIndex,
-            StatusBarIcon old, StatusBarIcon icon) {
+    public void updateIcon(String slot, int index, int viewIndex, StatusBarIcon old,
+            StatusBarIcon icon) {
         if (SPEW_ICONS) {
             Slog.d(TAG, "updateIcon slot=" + slot + " index=" + index + " viewIndex=" + viewIndex
                     + " old=" + old + " icon=" + icon);
         }
-        StatusBarIconView view = (StatusBarIconView)mStatusIcons.getChildAt(viewIndex);
+        StatusBarIconView view = (StatusBarIconView) mStatusIcons.getChildAt(viewIndex);
         view.set(icon);
     }
 
@@ -404,15 +438,16 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 notification.notification.fullScreenIntent.send();
             } catch (PendingIntent.CanceledException e) {
             }
-        } 
+        }
 
         StatusBarIconView iconView = addNotificationViews(key, notification);
-        if (iconView == null) return;
+        if (iconView == null)
+            return;
 
         if (shouldTick) {
             tick(notification);
         }
-        
+
         // Recalculate the position of the sliding windows and the titles.
         setAreThereNotifications();
         updateExpandedViewPos(EXPANDED_LEAVE_ALONE);
@@ -425,11 +460,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             oldList = mOngoing;
         } else {
             oldIndex = mLatest.findEntry(key);
-            if (oldIndex < 0) {
-                Slog.w(TAG, "updateNotification for unknown key: " + key);
-                return;
+
+            if (oldIndex >= 0) {
+                oldList = mLatest;
+
+            } else {
+                oldIndex = mMiniConData.findEntry(key);
+
+                if (oldIndex < 0) {
+                    Slog.w(TAG, "updateNotification for unknown key: " + key);
+                    return;
+                } else {
+                    oldList = mMiniConData;
+                }
             }
-            oldList = mLatest;
         }
         final NotificationData.Entry oldEntry = oldList.getEntryAt(oldIndex);
         final StatusBarNotification oldNotification = oldEntry.notification;
@@ -438,35 +482,41 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         final RemoteViews contentView = notification.notification.contentView;
 
         if (false) {
-            Slog.d(TAG, "old notification: when=" + oldNotification.notification.when
-                    + " ongoing=" + oldNotification.isOngoing()
-                    + " expanded=" + oldEntry.expanded
+            Slog.d(TAG, "old notification: when=" + oldNotification.notification.when + " ongoing="
+                    + oldNotification.isOngoing() + " expanded=" + oldEntry.expanded
                     + " contentView=" + oldContentView);
-            Slog.d(TAG, "new notification: when=" + notification.notification.when
-                    + " ongoing=" + oldNotification.isOngoing()
-                    + " contentView=" + contentView);
+            Slog.d(TAG, "new notification: when=" + notification.notification.when + " ongoing="
+                    + oldNotification.isOngoing() + " contentView=" + contentView);
         }
 
-        // Can we just reapply the RemoteViews in place?  If when didn't change, the order
+        // Can we just reapply the RemoteViews in place? If when didn't change,
+        // the order
         // didn't change.
         if (notification.notification.when == oldNotification.notification.when
                 && notification.isOngoing() == oldNotification.isOngoing()
-                && oldEntry.expanded != null
-                && contentView != null && oldContentView != null
-                && contentView.getPackage() != null
-                && oldContentView.getPackage() != null
+                && oldEntry.expanded != null && contentView != null && oldContentView != null
+                && contentView.getPackage() != null && oldContentView.getPackage() != null
                 && oldContentView.getPackage().equals(contentView.getPackage())
                 && oldContentView.getLayoutId() == contentView.getLayoutId()) {
-            if (SPEW) Slog.d(TAG, "reusing notification");
+            if (SPEW)
+                Slog.d(TAG, "reusing notification");
             oldEntry.notification = notification;
             try {
-                // Reapply the RemoteViews
-                contentView.reapply(this, oldEntry.content);
+                if (!notification.isMiniCon()) {
+                    // Reapply the RemoteViews
+                    contentView.reapply(this, oldEntry.content);
+
+                } else {
+                    // Reapply the RemoteViews
+                    contentView.reapply(this, oldEntry.expanded);
+                    Slog.i(TAG, "UPDATE:MiniCon-" + notification.notification.twQuickPanelEvent);
+                }
+
                 // update the contentIntent
                 final PendingIntent contentIntent = notification.notification.contentIntent;
                 if (contentIntent != null) {
                     oldEntry.content.setOnClickListener(new Launcher(contentIntent,
-                                notification.pkg, notification.tag, notification.id));
+                            notification.pkg, notification.tag, notification.id));
                 }
                 // Update the icon.
                 final StatusBarIcon ic = new StatusBarIcon(notification.pkg,
@@ -476,15 +526,16 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                     handleNotificationError(key, notification, "Couldn't update icon: " + ic);
                     return;
                 }
-            }
-            catch (RuntimeException e) {
-                // It failed to add cleanly.  Log, and remove the view from the panel.
+            } catch (RuntimeException e) {
+                // It failed to add cleanly. Log, and remove the view from the
+                // panel.
                 Slog.w(TAG, "Couldn't reapply views for package " + contentView.getPackage(), e);
                 removeNotificationViews(key);
                 addNotificationViews(key, notification);
             }
         } else {
-            if (SPEW) Slog.d(TAG, "not reusing notification");
+            if (SPEW)
+                Slog.d(TAG, "not reusing notification");
             removeNotificationViews(key);
             addNotificationViews(key, notification);
         }
@@ -492,7 +543,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         // Restart the ticker if it's still running
         if (notification.notification.tickerText != null
                 && !TextUtils.equals(notification.notification.tickerText,
-                    oldEntry.notification.notification.tickerText)) {
+                        oldEntry.notification.notification.tickerText)) {
             tick(notification);
         }
 
@@ -502,16 +553,32 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     public void removeNotification(IBinder key) {
-        if (SPEW) Slog.d(TAG, "removeNotification key=" + key);
+        if (SPEW)
+            Slog.d(TAG, "removeNotification key=" + key);
         StatusBarNotification old = removeNotificationViews(key);
 
         if (old != null) {
             // Cancel the ticker if it's still running
-            //mTicker.removeEntry(old);
+            // mTicker.removeEntry(old);
 
             // Recalculate the position of the sliding windows and the titles.
             setAreThereNotifications();
             updateExpandedViewPos(EXPANDED_LEAVE_ALONE);
+        }
+    }
+
+    private int chooseIconIndex(boolean isMiniCon, boolean isOngoing, int viewIndex) {
+        final int latestSize = mLatest.size();
+        final int ongoingSize = mOngoing.size();
+
+        if (isMiniCon) {
+            return (latestSize + ongoingSize) + (mMiniConData.size() - viewIndex);
+        } else {
+            if (isOngoing) {
+                return latestSize + (ongoingSize - viewIndex);
+            } else {
+                return latestSize - viewIndex;
+            }
         }
     }
 
@@ -524,7 +591,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
     }
 
-    View[] makeNotificationView(StatusBarNotification notification, ViewGroup parent) {
+    View[] makeNotificationView(final StatusBarNotification notification, ViewGroup parent) {
         Notification n = notification.notification;
         RemoteViews remoteViews = n.contentView;
         if (remoteViews == null) {
@@ -532,25 +599,41 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
 
         // create the row view
-        LayoutInflater inflater = (LayoutInflater)getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-        View row = inflater.inflate(R.layout.status_bar_latest_event, parent, false);
+        LayoutInflater inflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+        // View row = inflater.inflate(R.layout.status_bar_latest_event, parent,
+        // false);
+        LatestItemContainer row = (LatestItemContainer) inflater.inflate(
+                R.layout.status_bar_latest_event, parent, false);
+        if ((n.flags & Notification.FLAG_ONGOING_EVENT) == 0
+                && (n.flags & Notification.FLAG_NO_CLEAR) == 0) {
+            row.setOnSwipeCallback(new Runnable() {
+
+                public void run() {
+                    try {
+                        mBarService.onNotificationClear(notification.pkg, notification.tag,
+                                notification.id);
+                    } catch (RemoteException e) {
+                        // Skip it, don't crash.
+                    }
+                }
+            });
+        }
 
         // bind the click event to the content area
-        ViewGroup content = (ViewGroup)row.findViewById(R.id.content);
+        ViewGroup content = (ViewGroup) row.findViewById(R.id.content);
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         content.setOnFocusChangeListener(mFocusChangeListener);
         PendingIntent contentIntent = n.contentIntent;
         if (contentIntent != null) {
             content.setOnClickListener(new Launcher(contentIntent, notification.pkg,
-                        notification.tag, notification.id));
+                    notification.tag, notification.id));
         }
 
         View expanded = null;
         Exception exception = null;
         try {
             expanded = remoteViews.apply(this, content);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             exception = e;
         }
         if (expanded == null) {
@@ -562,14 +645,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             row.setDrawingCacheEnabled(true);
         }
 
-        return new View[] { row, content, expanded };
+        return new View[] {
+                row, content, expanded
+        };
     }
 
     StatusBarIconView addNotificationViews(IBinder key, StatusBarNotification notification) {
+        boolean isOngoing = notification.isOngoing();
         NotificationData list;
-        ViewGroup parent;
-        final boolean isOngoing = notification.isOngoing();
-        if (isOngoing) {
+        LinearLayout parent;
+        boolean isMiniCon = notification.isMiniCon();
+        if (isMiniCon) {
+            list = mMiniConData;
+            parent = mMiniCon;
+        } else if (isOngoing) {
             list = mOngoing;
             parent = mOngoingItems;
         } else {
@@ -587,20 +676,29 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         final View content = views[1];
         final View expanded = views[2];
         // Construct the icon.
-        final StatusBarIconView iconView = new StatusBarIconView(this,
-                notification.pkg + "/0x" + Integer.toHexString(notification.id));
-        final StatusBarIcon ic = new StatusBarIcon(notification.pkg, notification.notification.icon,
-                    notification.notification.iconLevel, notification.notification.number);
+        final StatusBarIconView iconView = new StatusBarIconView(this, notification.pkg + "/0x"
+                + Integer.toHexString(notification.id));
+        final StatusBarIcon ic = new StatusBarIcon(notification.pkg,
+                notification.notification.icon, notification.notification.iconLevel,
+                notification.notification.number);
         if (!iconView.set(ic)) {
             handleNotificationError(key, notification, "Coulding create icon: " + ic);
             return null;
         }
         // Add the expanded view.
         final int viewIndex = list.add(key, notification, row, content, expanded, iconView);
-        parent.addView(row, viewIndex);
+
+        if (isMiniCon) {
+            ((ViewGroup) content).removeView(expanded);
+            parent.addView(expanded, viewIndex);
+            Slog.i(TAG, "ADD:MiniCon-" + notification.notification.twQuickPanelEvent);
+        } else {
+            parent.addView(row, viewIndex);
+        }
         // Add the icon.
-        final int iconIndex = chooseIconIndex(isOngoing, viewIndex);
-        mNotificationIcons.addView(iconView, iconIndex);
+        // final int iconIndex = ;
+
+        mNotificationIcons.addView(iconView, chooseIconIndex(isMiniCon, isOngoing, viewIndex));
         return iconView;
     }
 
@@ -609,14 +707,25 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         if (entry == null) {
             entry = mLatest.remove(key);
             if (entry == null) {
-                Slog.w(TAG, "removeNotification for unknown key: " + key);
-                return null;
+                entry = mMiniConData.remove(key);
+                if (entry == null) {
+                    Slog.w(TAG, "removeNotification for unknown key: " + key);
+                    return null;
+                }
             }
         }
-        // Remove the expanded view.
-        ((ViewGroup)entry.row.getParent()).removeView(entry.row);
+        // cond_34
+        if (!entry.notification.isMiniCon()) {
+            ((ViewGroup) entry.row.getParent()).removeView(entry.row);
+
+        } else {
+            performCollapse();
+            ((ViewGroup) entry.expanded.getParent()).removeView(entry.expanded);
+            Slog.i(TAG, "REMOVE:MiniCon-" + entry.notification.notification.twQuickPanelEvent);
+        }
+
         // Remove the icon.
-        ((ViewGroup)entry.icon.getParent()).removeView(entry.icon);
+        ((ViewGroup) entry.icon.getParent()).removeView(entry.icon);
 
         return entry.notification;
     }
@@ -629,7 +738,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         if (mLatest.hasClearableItems()) {
             mClearButton.setVisibility(View.VISIBLE);
         } else {
-            mClearButton.setVisibility(View.INVISIBLE);
+            mClearButton.setVisibility(View.GONE);
         }
 
         mOngoingTitle.setVisibility(ongoing ? View.VISIBLE : View.GONE);
@@ -642,7 +751,6 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
     }
 
-
     /**
      * State is one or more of the DISABLE constants from StatusBarManager.
      */
@@ -653,36 +761,42 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         if ((diff & StatusBarManager.DISABLE_EXPAND) != 0) {
             if ((state & StatusBarManager.DISABLE_EXPAND) != 0) {
-                if (SPEW) Slog.d(TAG, "DISABLE_EXPAND: yes");
+                if (SPEW)
+                    Slog.d(TAG, "DISABLE_EXPAND: yes");
                 animateCollapse();
             }
         }
         if ((diff & StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) {
             if ((state & StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) {
-                if (SPEW) Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: yes");
+                if (SPEW)
+                    Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: yes");
                 if (mTicking) {
                     mTicker.halt();
                 } else {
                     setNotificationIconVisibility(false, com.android.internal.R.anim.fade_out);
                 }
             } else {
-                if (SPEW) Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: no");
+                if (SPEW)
+                    Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: no");
                 if (!mExpandedVisible) {
                     setNotificationIconVisibility(true, com.android.internal.R.anim.fade_in);
                 }
             }
         } else if ((diff & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) {
             if (mTicking && (state & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) {
-                if (SPEW) Slog.d(TAG, "DISABLE_NOTIFICATION_TICKER: yes");
+                if (SPEW)
+                    Slog.d(TAG, "DISABLE_NOTIFICATION_TICKER: yes");
                 mTicker.halt();
             }
         }
     }
 
     /**
-     * All changes to the status bar and notifications funnel through here and are batched.
+     * All changes to the status bar and notifications funnel through here and
+     * are batched.
      */
     private class H extends Handler {
+
         public void handleMessage(Message m) {
             switch (m.what) {
                 case MSG_ANIMATE:
@@ -692,7 +806,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                     doRevealAnimation();
                     break;
                 case MSG_SAMSUNG_MAGIC:
-                    if(mIsStatusBarBrightNess) {
+                    if (mIsStatusBarBrightNess) {
                         mIsBrightNessMode = 1;
                         updateExpandedViewPos(0);
                         performCollapse();
@@ -703,21 +817,24 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     View.OnFocusChangeListener mFocusChangeListener = new View.OnFocusChangeListener() {
+
         public void onFocusChange(View v, boolean hasFocus) {
             // Because 'v' is a ViewGroup, all its children will be (un)selected
             // too, which allows marqueeing to work.
             v.setSelected(hasFocus);
         }
     };
-    private boolean mIsAutoBrightNess;
 
     private void makeExpandedVisible() {
-        if (SPEW) Slog.d(TAG, "Make expanded visible: expanded visible=" + mExpandedVisible);
+        if (SPEW)
+            Slog.d(TAG, "Make expanded visible: expanded visible=" + mExpandedVisible);
         if (mExpandedVisible) {
             return;
         }
         mExpandedVisible = true;
         visibilityChanged(true);
+
+        mMusicControls.updateControls();
 
         updateExpandedViewPos(EXPANDED_LEAVE_ALONE);
         mExpandedParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
@@ -733,9 +850,10 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     public void animateExpand() {
-        if (SPEW) Slog.d(TAG, "Animate expand: expanded=" + mExpanded);
+        if (SPEW)
+            Slog.d(TAG, "Animate expand: expanded=" + mExpanded);
         if ((mDisabled & StatusBarManager.DISABLE_EXPAND) != 0) {
-            return ;
+            return;
         }
         if (mExpanded) {
             return;
@@ -747,23 +865,24 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
     public void animateCollapse() {
         if (SPEW) {
-            Slog.d(TAG, "animateCollapse(): mExpanded=" + mExpanded
-                    + " mExpandedVisible=" + mExpandedVisible
-                    + " mExpanded=" + mExpanded
-                    + " mAnimating=" + mAnimating
-                    + " mAnimY=" + mAnimY
-                    + " mAnimVel=" + mAnimVel);
+            Slog.d(TAG, "animateCollapse(): mExpanded=" + mExpanded + " mExpandedVisible="
+                    + mExpandedVisible + " mExpanded=" + mExpanded + " mAnimating=" + mAnimating
+                    + " mAnimY=" + mAnimY + " mAnimVel=" + mAnimVel);
         }
 
         if (!mExpandedVisible) {
+            if (mExpandedParams != null) {
+                mExpandedParams.y = -0x8ae;
+                mExpandedDialog.getWindow().setAttributes(mExpandedParams);
+            }
             return;
         }
 
         int y;
         if (mAnimating) {
-            y = (int)mAnimY;
+            y = (int) mAnimY;
         } else {
-            y = mDisplay.getHeight()-1;
+            y = mDisplay.getHeight() - 1;
         }
         // Let the fling think that we're open so it goes in the right direction
         // and doesn't try to re-open the windowshade.
@@ -773,9 +892,10 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     void performExpand() {
-        if (SPEW) Slog.d(TAG, "performExpand: mExpanded=" + mExpanded);
+        if (SPEW)
+            Slog.d(TAG, "performExpand: mExpanded=" + mExpanded);
         if ((mDisabled & StatusBarManager.DISABLE_EXPAND) != 0) {
-            return ;
+            return;
         }
         if (mExpanded) {
             return;
@@ -785,13 +905,14 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         makeExpandedVisible();
         updateExpandedViewPos(EXPANDED_FULL_OPEN);
 
-        if (false) postStartTracing();
+        // if (false)
+        // postStartTracing();
     }
 
     void performCollapse() {
-        if (SPEW) Slog.d(TAG, "performCollapse: mExpanded=" + mExpanded
-                + " mExpandedVisible=" + mExpandedVisible
-                + " mTicking=" + mTicking);
+        if (SPEW)
+            Slog.d(TAG, "performCollapse: mExpanded=" + mExpanded + " mExpandedVisible="
+                    + mExpandedVisible + " mTicking=" + mTicking);
 
         if (!mExpandedVisible) {
             return;
@@ -819,24 +940,27 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
     void doAnimation() {
         if (mAnimating) {
-            if (SPEW) Slog.d(TAG, "doAnimation");
-            if (SPEW) Slog.d(TAG, "doAnimation before mAnimY=" + mAnimY);
+            if (SPEW)
+                Slog.d(TAG, "doAnimation");
+            if (SPEW)
+                Slog.d(TAG, "doAnimation before mAnimY=" + mAnimY);
             incrementAnim();
-            if (SPEW) Slog.d(TAG, "doAnimation after  mAnimY=" + mAnimY);
-            if (mAnimY >= mDisplay.getHeight()-1) {
-                if (SPEW) Slog.d(TAG, "Animation completed to expanded state.");
+            if (SPEW)
+                Slog.d(TAG, "doAnimation after  mAnimY=" + mAnimY);
+            if (mAnimY >= mDisplay.getHeight() - 1) {
+                if (SPEW)
+                    Slog.d(TAG, "Animation completed to expanded state.");
                 mAnimating = false;
                 updateExpandedViewPos(EXPANDED_FULL_OPEN);
                 performExpand();
-            }
-            else if (mAnimY < mStatusBarView.getHeight()) {
-                if (SPEW) Slog.d(TAG, "Animation completed to collapsed state.");
+            } else if (mAnimY < mStatusBarView.getHeight()) {
+                if (SPEW)
+                    Slog.d(TAG, "Animation completed to collapsed state.");
                 mAnimating = false;
                 updateExpandedViewPos(0);
                 performCollapse();
-            }
-            else {
-                updateExpandedViewPos((int)mAnimY);
+            } else {
+                updateExpandedViewPos((int) mAnimY);
                 mCurAnimationTime += ANIM_FRAME_DURATION;
                 mHandler.sendMessageAtTime(mHandler.obtainMessage(MSG_ANIMATE), mCurAnimationTime);
             }
@@ -851,15 +975,21 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
     void incrementAnim() {
         long now = SystemClock.uptimeMillis();
-        float t = ((float)(now - mAnimLastTime)) / 1000;            // ms -> s
+        float t = ((float) (now - mAnimLastTime)) / 1000; // ms -> s
         final float y = mAnimY;
-        final float v = mAnimVel;                                   // px/s
-        final float a = mAnimAccel;                                 // px/s/s
-        mAnimY = y + (v*t) + (0.5f*a*t*t);                          // px
-        mAnimVel = v + (a*t);                                       // px/s
-        mAnimLastTime = now;                                        // ms
-        //Slog.d(TAG, "y=" + y + " v=" + v + " a=" + a + " t=" + t + " mAnimY=" + mAnimY
-        //        + " mAnimAccel=" + mAnimAccel);
+        final float v = mAnimVel; // px/s
+        final float a = mAnimAccel; // px/s/s
+        mAnimY = y + (v * t) + (0.5f * a * t * t); // px
+        mAnimVel = v + (a * t); // px/s
+        mAnimLastTime = now; // ms
+        // Slog.d(TAG, "y=" + y + " v=" + v + " a=" + a + " t=" + t + " mAnimY="
+        // + mAnimY
+        // + " mAnimAccel=" + mAnimAccel);
+    }
+
+    public void hideCallOnGoingView() {
+        //mStatusBarView.removeView(mCallOnGoingView);
+        mCallOnGoingView.setVisibility(View.GONE);
     }
 
     void doRevealAnimation() {
@@ -868,9 +998,9 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             incrementAnim();
             if (mAnimY >= h) {
                 mAnimY = h;
-                updateExpandedViewPos((int)mAnimY);
+                updateExpandedViewPos((int) mAnimY);
             } else {
-                updateExpandedViewPos((int)mAnimY);
+                updateExpandedViewPos((int) mAnimY);
                 mCurAnimationTime += ANIM_FRAME_DURATION;
                 mHandler.sendMessageAtTime(mHandler.obtainMessage(MSG_ANIMATE_REVEAL),
                         mCurAnimationTime);
@@ -885,7 +1015,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             mAnimAccel = 2000.0f;
             mAnimVel = 200;
             mAnimY = mStatusBarView.getHeight();
-            updateExpandedViewPos((int)mAnimY);
+            updateExpandedViewPos((int) mAnimY);
             mAnimating = true;
             mAnimatingReveal = true;
             mHandler.removeMessages(MSG_ANIMATE);
@@ -914,20 +1044,18 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         mAnimY = y;
         mAnimVel = vel;
 
-        //Slog.d(TAG, "starting with mAnimY=" + mAnimY + " mAnimVel=" + mAnimVel);
+        // Slog.d(TAG, "starting with mAnimY=" + mAnimY + " mAnimVel=" +
+        // mAnimVel);
 
         if (mExpanded) {
-            if (!always && (
-                    vel > 200.0f
-                    || (y > (mDisplayHeight-25) && vel > -200.0f))) {
+            if (!always && (vel > 200.0f || (y > (mDisplayHeight - 25) && vel > -200.0f))) {
                 // We are expanded, but they didn't move sufficiently to cause
-                // us to retract.  Animate back to the expanded position.
+                // us to retract. Animate back to the expanded position.
                 mAnimAccel = 2000.0f;
                 if (vel < 0) {
                     mAnimVel = 0;
                 }
-            }
-            else {
+            } else {
                 // We are expanded and are now going to animate away.
                 mAnimAccel = -2000.0f;
                 if (vel > 0) {
@@ -935,27 +1063,24 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 }
             }
         } else {
-            if (always || (
-                    vel > 200.0f
-                    || (y > (mDisplayHeight/2) && vel > -200.0f))) {
+            if (always || (vel > 200.0f || (y > (mDisplayHeight / 2) && vel > -200.0f))) {
                 // We are collapsed, and they moved enough to allow us to
-                // expand.  Animate in the notifications.
+                // expand. Animate in the notifications.
                 mAnimAccel = 2000.0f;
                 if (vel < 0) {
                     mAnimVel = 0;
                 }
-            }
-            else {
+            } else {
                 // We are collapsed, but they didn't move sufficiently to cause
-                // us to retract.  Animate back to the collapsed position.
+                // us to retract. Animate back to the collapsed position.
                 mAnimAccel = -2000.0f;
                 if (vel > 0) {
                     mAnimVel = 0;
                 }
             }
         }
-        //Slog.d(TAG, "mAnimY=" + mAnimY + " mAnimVel=" + mAnimVel
-        //        + " mAnimAccel=" + mAnimAccel);
+        // Slog.d(TAG, "mAnimY=" + mAnimY + " mAnimVel=" + mAnimVel
+        // + " mAnimAccel=" + mAnimAccel);
 
         long now = SystemClock.uptimeMillis();
         mAnimLastTime = now;
@@ -970,7 +1095,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     boolean interceptTouchEvent(MotionEvent event) {
         if (SPEW) {
             Slog.d(TAG, "Touch: rawY=" + event.getRawY() + " event=" + event + " mDisabled="
-                + mDisabled);
+                    + mDisabled);
         }
 
         if ((mDisabled & StatusBarManager.DISABLE_EXPAND) != 0) {
@@ -978,9 +1103,9 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
 
         final int statusBarSize = mStatusBarView.getHeight();
-        final int hitSize = statusBarSize*2;
+        final int hitSize = statusBarSize * 2;
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
-            final int y = (int)event.getRawY();
+            final int y = (int) event.getRawY();
 
             if (!mExpanded) {
                 mViewDelta = statusBarSize - y;
@@ -988,19 +1113,21 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 mTrackingView.getLocationOnScreen(mAbsPos);
                 mViewDelta = mAbsPos[1] + mTrackingView.getHeight() - y;
             }
-            if ((!mExpanded && y < hitSize) ||
-                    (mExpanded && y > (mDisplay.getHeight()-hitSize))) {
+            if ((!mExpanded && y < hitSize) || (mExpanded && y > (mDisplay.getHeight() - hitSize))) {
 
-                // We drop events at the edge of the screen to make the windowshade come
-                // down by accident less, especially when pushing open a device with a keyboard
+                // We drop events at the edge of the screen to make the
+                // windowshade come
+                // down by accident less, especially when pushing open a device
+                // with a keyboard
                 // that rotates (like g1 and droid)
-                int x = (int)event.getRawX();
+                int x = (int) event.getRawX();
                 final int edgeBorder = mEdgeBorder;
                 if (x >= edgeBorder && x < mDisplay.getWidth() - edgeBorder) {
-                    prepareTracking(y, !mExpanded);// opening if we're not already fully visible
+                    prepareTracking(y, !mExpanded);// opening if we're not
+                                                   // already fully visible
                     mVelocityTracker.addMovement(event);
                 }
-                
+
                 if (mIsStatusBarBrightNess) {
                     mIsBrightNessMode = 0;
                     if (!mIsAutoBrightNess) {
@@ -1014,13 +1141,13 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             mVelocityTracker.addMovement(event);
             final int minY = statusBarSize + mCloseView.getHeight();
             if (event.getAction() == MotionEvent.ACTION_MOVE) {
-                int y = (int)event.getRawY();
+                int y = (int) event.getRawY();
                 if (mAnimatingReveal && y < minY) {
                     // nothing
-                    if(mIsStatusBarBrightNess && mIsBrightNessMode == 1) {
+                    if (mIsStatusBarBrightNess && mIsBrightNessMode == 1) {
                         doBrightNess(event);
                     }
-                } else  {
+                } else {
                     if (mIsStatusBarBrightNess) {
                         if (!mIsAutoBrightNess && mHandler.hasMessages(MSG_SAMSUNG_MAGIC)) {
                             mHandler.removeMessages(MSG_SAMSUNG_MAGIC);
@@ -1038,7 +1165,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 mVelocityTracker.computeCurrentVelocity(1000);
 
                 float yVel = mVelocityTracker.getYVelocity();
-                boolean negative = yVel < 0;
+                // boolean negative = yVel < 0;
 
                 float xVel = mVelocityTracker.getXVelocity();
                 if (xVel < 0) {
@@ -1048,17 +1175,17 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                     xVel = 150.0f; // limit how much we care about the x axis
                 }
 
-                float vel = (float)Math.hypot(yVel, xVel);
-                if (negative) {
+                float vel = (float) Math.hypot(yVel, xVel);
+                if (yVel < 0) { // negative
                     vel = -vel;
                 }
-                
-                if(mIsStatusBarBrightNess && mHandler.hasMessages(MSG_SAMSUNG_MAGIC)) {
+
+                if (mIsStatusBarBrightNess && mHandler.hasMessages(MSG_SAMSUNG_MAGIC)) {
                     mHandler.removeMessages(MSG_SAMSUNG_MAGIC);
                 }
-                
-                if(mIsBrightNessMode == 0) {
-                    performFling((int)event.getRawY(), vel, false);
+
+                if (mIsBrightNessMode == 0) {
+                    performFling((int) event.getRawY(), vel, false);
                 }
             }
 
@@ -1067,6 +1194,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     private class Launcher implements View.OnClickListener {
+
         private PendingIntent mIntent;
         private String mPkg;
         private String mTag;
@@ -1083,7 +1211,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             try {
                 // The intent we are sending is for the application, which
                 // won't have permission to immediately start an activity after
-                // the user switches to home.  We know it is safe to do at this
+                // the user switches to home. We know it is safe to do at this
                 // point, so make sure new activity switches are now allowed.
                 ActivityManagerNative.getDefault().resumeAppSwitches();
             } catch (RemoteException e) {
@@ -1093,12 +1221,13 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 int[] pos = new int[2];
                 v.getLocationOnScreen(pos);
                 Intent overlay = new Intent();
-                overlay.setSourceBounds(
-                        new Rect(pos[0], pos[1], pos[0]+v.getWidth(), pos[1]+v.getHeight()));
+                overlay.setSourceBounds(new Rect(pos[0], pos[1], pos[0] + v.getWidth(), pos[1]
+                        + v.getHeight()));
                 try {
                     mIntent.send(StatusBarService.this, 0, overlay);
                 } catch (PendingIntent.CanceledException e) {
-                    // the stack trace isn't very helpful here.  Just log the exception message.
+                    // the stack trace isn't very helpful here. Just log the
+                    // exception message.
                     Slog.w(TAG, "Sending contentIntent failed: " + e);
                 }
             }
@@ -1117,21 +1246,19 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     private void tick(StatusBarNotification n) {
         // Show the ticker if one is requested. Also don't do this
         // until status bar window is attached to the window manager,
-        // because...  well, what's the point otherwise?  And trying to
+        // because... well, what's the point otherwise? And trying to
         // run a ticker without being attached will crash!
         if (n.notification.tickerText != null && mStatusBarView.getWindowToken() != null) {
-            if (0 == (mDisabled & (StatusBarManager.DISABLE_NOTIFICATION_ICONS
-                            | StatusBarManager.DISABLE_NOTIFICATION_TICKER))) {
+            if (0 == (mDisabled & (StatusBarManager.DISABLE_NOTIFICATION_ICONS | StatusBarManager.DISABLE_NOTIFICATION_TICKER))) {
                 mTicker.addEntry(n);
             }
         }
     }
 
     /**
-     * Cancel this notification and tell the StatusBarManagerService / NotificationManagerService
-     * about the failure.
-     *
-     * WARNING: this will call back into us.  Don't hold any locks.
+     * Cancel this notification and tell the StatusBarManagerService /
+     * NotificationManagerService about the failure. WARNING: this will call
+     * back into us. Don't hold any locks.
      */
     void handleNotificationError(IBinder key, StatusBarNotification n, String message) {
         removeNotification(key);
@@ -1141,28 +1268,30 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             // The end is nigh.
         }
     }
-    
+
     private class BrightNessContentObserver extends ContentObserver {
-        
+
         public BrightNessContentObserver() {
             super(new Handler());
         }
-        
+
         @Override
-        public void onChange(boolean selfChange) {        
+        public void onChange(boolean selfChange) {
             mIsAutoBrightNess = checkAutoBrightNess();
         }
-        
+
     }
 
     private class MyTicker extends Ticker {
+
         MyTicker(Context context, StatusBarView sb) {
             super(context, sb);
         }
 
         @Override
         void tickerStarting() {
-            if (SPEW) Slog.d(TAG, "tickerStarting");
+            if (SPEW)
+                Slog.d(TAG, "tickerStarting");
             mTicking = true;
             mIcons.setVisibility(View.GONE);
             mTickerView.setVisibility(View.VISIBLE);
@@ -1175,7 +1304,8 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         @Override
         void tickerDone() {
-            if (SPEW) Slog.d(TAG, "tickerDone");
+            if (SPEW)
+                Slog.d(TAG, "tickerDone");
             mTicking = false;
             mIcons.setVisibility(View.VISIBLE);
             mTickerView.setVisibility(View.GONE);
@@ -1187,7 +1317,8 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
 
         void tickerHalting() {
-            if (SPEW) Slog.d(TAG, "tickerHalting");
+            if (SPEW)
+                Slog.d(TAG, "tickerHalting");
             mTicking = false;
             mIcons.setVisibility(View.VISIBLE);
             mTickerView.setVisibility(View.GONE);
@@ -1213,28 +1344,23 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
-        if (checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (checkCallingOrSelfPermission(android.Manifest.permission.DUMP) != PackageManager.PERMISSION_GRANTED) {
             pw.println("Permission Denial: can't dump StatusBar from from pid="
-                    + Binder.getCallingPid()
-                    + ", uid=" + Binder.getCallingUid());
+                    + Binder.getCallingPid() + ", uid=" + Binder.getCallingUid());
             return;
         }
 
         synchronized (mQueueLock) {
             pw.println("Current Status Bar state:");
-            pw.println("  mExpanded=" + mExpanded
-                    + ", mExpandedVisible=" + mExpandedVisible);
+            pw.println("  mExpanded=" + mExpanded + ", mExpandedVisible=" + mExpandedVisible);
             pw.println("  mTicking=" + mTicking);
             pw.println("  mTracking=" + mTracking);
-            pw.println("  mAnimating=" + mAnimating
-                    + ", mAnimY=" + mAnimY + ", mAnimVel=" + mAnimVel
-                    + ", mAnimAccel=" + mAnimAccel);
-            pw.println("  mCurAnimationTime=" + mCurAnimationTime
-                    + " mAnimLastTime=" + mAnimLastTime);
-            pw.println("  mDisplayHeight=" + mDisplayHeight
-                    + " mAnimatingReveal=" + mAnimatingReveal
-                    + " mViewDelta=" + mViewDelta);
+            pw.println("  mAnimating=" + mAnimating + ", mAnimY=" + mAnimY + ", mAnimVel="
+                    + mAnimVel + ", mAnimAccel=" + mAnimAccel);
+            pw.println("  mCurAnimationTime=" + mCurAnimationTime + " mAnimLastTime="
+                    + mAnimLastTime);
+            pw.println("  mDisplayHeight=" + mDisplayHeight + " mAnimatingReveal="
+                    + mAnimatingReveal + " mViewDelta=" + mViewDelta);
             pw.println("  mDisplayHeight=" + mDisplayHeight);
             pw.println("  mExpandedParams: " + mExpandedParams);
             pw.println("  mExpandedView: " + viewInfo(mExpandedView));
@@ -1248,19 +1374,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             pw.println("  mNoNotificationsTitle: " + viewInfo(mNoNotificationsTitle));
             pw.println("  mCloseView: " + viewInfo(mCloseView));
             pw.println("  mTickerView: " + viewInfo(mTickerView));
-            pw.println("  mScrollView: " + viewInfo(mScrollView)
-                    + " scroll " + mScrollView.getScrollX() + "," + mScrollView.getScrollY());
+            pw.println("  mScrollView: " + viewInfo(mScrollView) + " scroll "
+                    + mScrollView.getScrollX() + "," + mScrollView.getScrollY());
             pw.println("mNotificationLinearLayout: " + viewInfo(mNotificationLinearLayout));
         }
 
         if (true) {
             // must happen on ui thread
             mHandler.post(new Runnable() {
-                    public void run() {
-                        Slog.d(TAG, "mStatusIcons:");
-                        mStatusIcons.debug();
-                    }
-                });
+
+                public void run() {
+                    Slog.d(TAG, "mStatusIcons:");
+                    mStatusIcons.debug();
+                }
+            });
         }
 
     }
@@ -1270,22 +1397,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         int pixelFormat;
         Drawable bg;
 
-        /// ---------- Tracking View --------------
-        pixelFormat = PixelFormat.RGBX_8888;
+        // / ---------- Tracking View --------------
+        pixelFormat = PixelFormat.TRANSLUCENT;
         bg = mTrackingView.getBackground();
         if (bg != null) {
             pixelFormat = bg.getOpacity();
         }
 
-        lp = new WindowManager.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+        lp = new WindowManager.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.TYPE_STATUS_BAR_PANEL,
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
-                pixelFormat);
-//        lp.token = mStatusBarView.getWindowToken();
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM, pixelFormat);
+        // lp.token = mStatusBarView.getWindowToken();
         lp.gravity = Gravity.TOP | Gravity.FILL_HORIZONTAL;
         lp.setTitle("TrackingView");
         lp.y = mTrackingPosition;
@@ -1299,7 +1424,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         int pixelFormat;
         Drawable bg;
 
-        /// ---------- Expanded View --------------
+        // / ---------- Expanded View --------------
         pixelFormat = PixelFormat.TRANSLUCENT;
 
         final int disph = mDisplay.getHeight();
@@ -1322,12 +1447,13 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         mExpandedParams = lp;
 
         mExpandedDialog.getWindow().requestFeature(Window.FEATURE_NO_TITLE);
-        mExpandedDialog.setContentView(mExpandedView,
-                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                                           ViewGroup.LayoutParams.MATCH_PARENT));
+        mExpandedDialog.setContentView(mExpandedView, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         mExpandedDialog.getWindow().setBackgroundDrawable(null);
         mExpandedDialog.show();
-        FrameLayout hack = (FrameLayout)mExpandedView.getParent();
+        FrameLayout hack = (FrameLayout) mExpandedView.getParent();
+
+        mStatusBarView.setVisibility(View.VISIBLE);
     }
 
     void setDateViewVisibility(boolean visible, int anim) {
@@ -1348,7 +1474,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     void updateExpandedViewPos(int expandedPosition) {
         if (SPEW) {
             Slog.d(TAG, "updateExpandedViewPos before expandedPosition=" + expandedPosition
-                    + " mTrackingParams.y=" 
+                    + " mTrackingParams.y="
                     + ((mTrackingParams == null) ? "???" : mTrackingParams.y)
                     + " mTrackingPosition=" + mTrackingPosition);
         }
@@ -1356,7 +1482,8 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         int h = mStatusBarView.getHeight();
         int disph = mDisplay.getHeight();
 
-        // If the expanded view is not visible, make sure they're still off screen.
+        // If the expanded view is not visible, make sure they're still off
+        // screen.
         // Maybe the view was resized.
         if (!mExpandedVisible) {
             if (mTrackingView != null) {
@@ -1377,20 +1504,18 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         int pos;
         if (expandedPosition == EXPANDED_FULL_OPEN) {
             pos = h;
-        }
-        else if (expandedPosition == EXPANDED_LEAVE_ALONE) {
+        } else if (expandedPosition == EXPANDED_LEAVE_ALONE) {
             pos = mTrackingPosition;
-        }
-        else {
+        } else {
             if (expandedPosition <= disph) {
                 pos = expandedPosition;
             } else {
                 pos = disph;
             }
-            pos -= disph-h;
+            pos -= disph - h;
         }
         mTrackingPosition = mTrackingParams.y = pos;
-        mTrackingParams.height = disph-h;
+        mTrackingParams.height = disph - h;
         WindowManagerImpl.getDefault().updateViewLayout(mTrackingView, mTrackingParams);
 
         if (mExpandedParams != null) {
@@ -1402,7 +1527,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
             if (expandedPosition != EXPANDED_LEAVE_ALONE) {
                 mExpandedParams.y = pos + mTrackingView.getHeight()
-                        - (mTrackingParams.height-closePos) - contentsBottom;
+                        - (mTrackingParams.height - closePos) - contentsBottom;
                 int max = h;
                 if (mExpandedParams.y > max) {
                     mExpandedParams.y = max;
@@ -1414,22 +1539,23 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
                 boolean visible = (mTrackingPosition + mTrackingView.getHeight()) > h;
                 if (!visible) {
-                    // if the contents aren't visible, move the expanded view way off screen
+                    // if the contents aren't visible, move the expanded view
+                    // way off screen
                     // because the window itself extends below the content view.
                     mExpandedParams.y = -disph;
                 }
                 mExpandedDialog.getWindow().setAttributes(mExpandedParams);
 
-                if (SPEW) Slog.d(TAG, "updateExpandedViewPos visibilityChanged(" + visible + ")");
+                if (SPEW)
+                    Slog.d(TAG, "updateExpandedViewPos visibilityChanged(" + visible + ")");
                 visibilityChanged(visible);
             }
         }
 
         if (SPEW) {
             Slog.d(TAG, "updateExpandedViewPos after  expandedPosition=" + expandedPosition
-                    + " mTrackingParams.y=" + mTrackingParams.y
-                    + " mTrackingPosition=" + mTrackingPosition
-                    + " mExpandedParams.y=" + mExpandedParams.y
+                    + " mTrackingParams.y=" + mTrackingParams.y + " mTrackingPosition="
+                    + mTrackingPosition + " mExpandedParams.y=" + mExpandedParams.y
                     + " mExpandedParams.height=" + mExpandedParams.height);
         }
     }
@@ -1446,11 +1572,12 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     /**
-     * The LEDs are turned o)ff when the notification panel is shown, even just a little bit.
-     * This was added last-minute and is inconsistent with the way the rest of the notifications
-     * are handled, because the notification isn't really cancelled.  The lights are just
-     * turned off.  If any other notifications happen, the lights will turn back on.  Steve says
-     * this is what he wants. (see bug 1131461)
+     * The LEDs are turned o)ff when the notification panel is shown, even just
+     * a little bit. This was added last-minute and is inconsistent with the way
+     * the rest of the notifications are handled, because the notification isn't
+     * really cancelled. The lights are just turned off. If any other
+     * notifications happen, the lights will turn back on. Steve says this is
+     * what he wants. (see bug 1131461)
      */
     void visibilityChanged(boolean visible) {
         if (mPanelSlightlyVisible != visible) {
@@ -1463,44 +1590,29 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         }
     }
 
-    void performDisableActions(int net) {
-        int old = mDisabled;
-        int diff = net ^ old;
-        mDisabled = net;
-
-        // act accordingly
-        if ((diff & StatusBarManager.DISABLE_EXPAND) != 0) {
-            if ((net & StatusBarManager.DISABLE_EXPAND) != 0) {
-                Slog.d(TAG, "DISABLE_EXPAND: yes");
-                animateCollapse();
-            }
-        }
-        if ((diff & StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) {
-            if ((net & StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) {
-                Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: yes");
-                if (mTicking) {
-                    mNotificationIcons.setVisibility(View.INVISIBLE);
-                    mTicker.halt();
-                } else {
-                    setNotificationIconVisibility(false, com.android.internal.R.anim.fade_out);
-                }
-            } else {
-                Slog.d(TAG, "DISABLE_NOTIFICATION_ICONS: no");
-                if (!mExpandedVisible) {
-                    setNotificationIconVisibility(true, com.android.internal.R.anim.fade_in);
-                }
-            }
-        } else if ((diff & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) {
-            Slog.d(TAG, "DISABLE_NOTIFICATION_TICKER: "
-                + (((net & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0)
-                    ? "yes" : "no"));
-            if (mTicking && (net & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) {
-                mTicker.halt();
-            }
-        }
-    }
+    /*
+     * void performDisableActions(int net) { int old = mDisabled; int diff = net
+     * ^ old; mDisabled = net; // act accordingly if ((diff &
+     * StatusBarManager.DISABLE_EXPAND) != 0) { if ((net &
+     * StatusBarManager.DISABLE_EXPAND) != 0) { Slog.d(TAG,
+     * "DISABLE_EXPAND: yes"); animateCollapse(); } } if ((diff &
+     * StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) { if ((net &
+     * StatusBarManager.DISABLE_NOTIFICATION_ICONS) != 0) { Slog.d(TAG,
+     * "DISABLE_NOTIFICATION_ICONS: yes"); if (mTicking) {
+     * mNotificationIcons.setVisibility(View.INVISIBLE); mTicker.halt(); } else
+     * { setNotificationIconVisibility(false,
+     * com.android.internal.R.anim.fade_out); } } else { Slog.d(TAG,
+     * "DISABLE_NOTIFICATION_ICONS: no"); if (!mExpandedVisible) {
+     * setNotificationIconVisibility(true, com.android.internal.R.anim.fade_in);
+     * } } } else if ((diff & StatusBarManager.DISABLE_NOTIFICATION_TICKER) !=
+     * 0) { Slog.d(TAG, "DISABLE_NOTIFICATION_TICKER: " + (((net &
+     * StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) ? "yes" : "no")); if
+     * (mTicking && (net & StatusBarManager.DISABLE_NOTIFICATION_TICKER) != 0) {
+     * mTicker.halt(); } } }
+     */
 
     private View.OnClickListener mClearButtonListener = new View.OnClickListener() {
+
         public void onClick(View v) {
             try {
                 mBarService.onClearAllNotifications();
@@ -1512,23 +1624,25 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     };
 
     private BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
+
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(action)
-                    || Intent.ACTION_SCREEN_OFF.equals(action)) {
+            if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(action)) {
                 animateCollapse();
-            }
-            else if (Intent.ACTION_CONFIGURATION_CHANGED.equals(action)) {
+            } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                animateCollapse();
+                mStatusBarView.marqueeStatusBar();
+            } else if (Intent.ACTION_CONFIGURATION_CHANGED.equals(action)) {
                 updateResources();
+                updatePropFactorValue();
             }
         }
     };
 
     /**
-     * Reload some of our resources when the configuration changes.
-     *
-     * We don't reload everything when the configuration changes -- we probably
-     * should, but getting that smooth is tough.  Someday we'll fix that.  In the
+     * Reload some of our resources when the configuration changes. We don't
+     * reload everything when the configuration changes -- we probably should,
+     * but getting that smooth is tough. Someday we'll fix that. In the
      * meantime, just update the things that we know change.
      */
     void updateResources() {
@@ -1541,23 +1655,32 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         mEdgeBorder = res.getDimensionPixelSize(R.dimen.status_bar_edge_ignore);
 
-        if (false) Slog.v(TAG, "updateResources");
+        if (false)
+            Slog.v(TAG, "updateResources");
     }
 
     //
     // tracing
     //
 
-    void postStartTracing() {
-        mHandler.postDelayed(mStartTracing, 3000);
-    }
+    // void postStartTracing() {
+    // mHandler.postDelayed(mStartTracing, 3000);
+    // }
+
+    public View.OnClickListener mMusicToggleButtonListener = new View.OnClickListener() {
+
+        public void onClick(View v) {
+            mMusicControls.visibilityToggled();
+        }
+    };
 
     void vibrate() {
-        android.os.Vibrator vib = (android.os.Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
+        android.os.Vibrator vib = (android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         vib.vibrate(250);
     }
 
     Runnable mStartTracing = new Runnable() {
+
         public void run() {
             vibrate();
             SystemClock.sleep(250);
@@ -1568,75 +1691,109 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     };
 
     Runnable mStopTracing = new Runnable() {
+
         public void run() {
             android.os.Debug.stopMethodTracing();
             Slog.d(TAG, "stopTracing");
             vibrate();
         }
     };
-    
+
     private Float mPropFactor;
     private CallOnGoingView mCallOnGoingView;
-    
+
     private boolean checkAutoBrightNess() {
         return Settings.System.getInt(getContentResolver(), "screen_brightness_mode", 0) == 1;
     }
-    
+
     private int checkMinMax(int brightness) {
-        if(0x1E > brightness) // brightness < 0x1E
+        if (0x1E > brightness) // brightness < 0x1E
             return 0x1E;
         else if (0xFF < brightness) { // brightness > 0xFF
             return 0xFF;
         }
-  
+
         return brightness;
     }
 
-    private void doBrightNess(MotionEvent e) { 
-        int screenBrightness = checkMinMax(Float.valueOf((e.getRawX() * mPropFactor.floatValue())).intValue());
+    private void doBrightNess(MotionEvent e) {
+        int screenBrightness = checkMinMax(Float.valueOf((e.getRawX() * mPropFactor.floatValue()))
+                .intValue());
         Settings.System.putInt(getContentResolver(), "screen_brightness", screenBrightness);
-        //Log.e(TAG, "Screen brightness: " + screenBrightness);
-        IPowerManager pw = IPowerManager.Stub.asInterface(ServiceManager.getService("power"));
-        if(pw != null) {
-            try {
+        // Log.e(TAG, "Screen brightness: " + screenBrightness);
+        try {
+            IPowerManager pw = IPowerManager.Stub.asInterface(ServiceManager.getService("power"));
+            if (pw != null) {
                 pw.setBacklightBrightness(screenBrightness);
-            } catch (RemoteException e1) {
             }
+        } catch (RemoteException e1) {
         }
     }
-    
+
     private void updatePropFactorValue() {
-        mPropFactor = Float.valueOf( (float)android.os.Power.BRIGHTNESS_ON / Integer.valueOf(mDisplay.getWidth()).floatValue());
+        mPropFactor = Float.valueOf((float) android.os.Power.BRIGHTNESS_ON
+                / Integer.valueOf(mDisplay.getWidth()).floatValue());
     }
 
     public void showCallOnGoingView() {
-        if(mStatusBarView.indexOfChild(mCallOnGoingView) == -1) {
-            mStatusBarView.addView(mCallOnGoingView);
-        }
+//        if (mStatusBarView.indexOfChild(mCallOnGoingView) == -1) {
+//            mStatusBarView.addView(mCallOnGoingView);
+//        }
+        mCallOnGoingView.setVisibility(View.VISIBLE);
     }
-    
-    public void hideCallOnGoingView() {
-        mStatusBarView.removeView(mCallOnGoingView);
-   }
-    
-   public void updateTheme() {
-       int oldDisabled = mDisabled;
-       
-       disable(1);
-       reloadResources();
-       disable(oldDisabled);
-   }
 
-    private void reloadResources() {
+    public void updateTheme() {
+        int oldDisabled = mDisabled;
+
+        disable(1);
+        reloadResources();
+        disable(oldDisabled);
+    }
+
+    void reloadResources() {
         // TODO Auto-generated method stub
 
     }
-    
+
     public void updateThemeForNotificationView(Resources r, View v) {
-        //TODO FINISH THIS 
+        // TODO FINISH THIS
         View temp = v.findViewById(0x1020016);
-        if(temp != null) {
-            
+        if (temp != null) {
+
         }
+    }
+
+    public void grabScreen() {
+
+    }
+
+    class SettingsObserver extends ContentObserver {
+
+        SettingsObserver(Handler handler) {
+            super(handler);
+        }
+
+        void observe() {
+            ContentResolver resolver = mContext.getContentResolver();
+            resolver.registerContentObserver(
+                    Settings.System.getUriFor("tweaks_use_custom_music_controls"), false, this);
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            updateSettings();
+        }
+    }
+
+    public void updateSettings() {
+        useCustomMusic = Settings.System.getInt(getContentResolver(),
+                "tweaks_use_custom_music_controls", 1) == 1;
+        if (!useCustomMusic) {
+            mMusicToggleButton.setVisibility(View.GONE);
+            mMusicControls.disable();
+        } else {
+            mMusicControls.setupControls();
+        }
+
     }
 }

@@ -149,5 +149,10 @@ public class StatusBarView extends FrameLayout {
         return mService.interceptTouchEvent(event)
                 ? true : super.onInterceptTouchEvent(event);
     }
+
+    public void marqueeStatusBar() {
+        // TODO Auto-generated method stub
+        
+    }
 }
 
