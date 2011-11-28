@@ -76,6 +76,7 @@ import com.android.internal.statusbar.StatusBarIconList;
 import com.android.internal.statusbar.StatusBarNotification;
 import com.android.systemui.R;
 import com.android.systemui.statusbar.policy.StatusBarPolicy;
+import com.android.systemui.statusbar.powerwidget.PowerWidget;
 import com.android.systemui.statusbar.quickpanel.QuickSettingsView;
 
 public class StatusBarService extends Service implements CommandQueue.Callbacks {
@@ -181,6 +182,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
     // music
     MusicControls mMusicControls;
+
     public static ImageView mMusicToggleButton;
 
     private class ExpandedDialog extends Dialog {
@@ -351,8 +353,6 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 R.layout.quickpanel_quick_settings, null);
         mExpandedView.addView(qsv, 0);
 
-        
-
         // if (useCustomMusic) {
         // music
         mMusicToggleButton = (ImageView) expanded.findViewById(R.id.music_toggle_button);
@@ -365,20 +365,26 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
 
         useCustomMusic = Settings.System.getInt(getContentResolver(),
                 "tweaks_use_custom_music_controls", 1) == 1;
-        if (!useCustomMusic) {
-            ((LinearLayout) mExpandedView.findViewById(R.id.notificationLinearLayout)).addView(
-                    mMiniCon, 0);
-            mMusicToggleButton.setVisibility(View.GONE);
-            mMusicControls.disable();
-        }
 
-//        mCallOnGoingView = (CallOnGoingView) View.inflate(context,
-//                R.layout.status_bar_call_ongoing, null);
-        
-        mCallOnGoingView = (CallOnGoingView) expanded.findViewById(R.id.call_controls);
-        mCallOnGoingView.setVisibility(View.GONE);
+        // if (!useCustomMusic) {
+        // ((LinearLayout)
+        // mExpandedView.findViewById(R.id.notificationLinearLayout)).addView(
+        // mMiniCon, 0);
+        //
+        // mMusicToggleButton.setVisibility(View.GONE);
+        // mMusicControls.disable();
+        // }
+
+        mCallWidget = (CallWidget) expanded.findViewById(R.id.call_widget);
+
+        mCallOnGoingView = (CallOnGoingView) View.inflate(context,
+                R.layout.status_bar_call_ongoing, null);
         mCallOnGoingView.mService = this;
+
     }
+
+    public CallWidget mCallWidget;
+
     boolean useCustomMusic = true;
 
     protected void addStatusBarView() {
@@ -719,7 +725,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             ((ViewGroup) entry.row.getParent()).removeView(entry.row);
 
         } else {
-            performCollapse();
+            // performCollapse();
             ((ViewGroup) entry.expanded.getParent()).removeView(entry.expanded);
             Slog.i(TAG, "REMOVE:MiniCon-" + entry.notification.notification.twQuickPanelEvent);
         }
@@ -835,6 +841,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         visibilityChanged(true);
 
         mMusicControls.updateControls();
+        mCallWidget.updateWidget();
 
         updateExpandedViewPos(EXPANDED_LEAVE_ALONE);
         mExpandedParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
@@ -988,8 +995,9 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     public void hideCallOnGoingView() {
-        //mStatusBarView.removeView(mCallOnGoingView);
+        // mStatusBarView.removeView(mCallOnGoingView);
         mCallOnGoingView.setVisibility(View.GONE);
+        // mCallWidget.hide();
     }
 
     void doRevealAnimation() {
@@ -1736,10 +1744,11 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     }
 
     public void showCallOnGoingView() {
-//        if (mStatusBarView.indexOfChild(mCallOnGoingView) == -1) {
-//            mStatusBarView.addView(mCallOnGoingView);
-//        }
+        // if (mStatusBarView.indexOfChild(mCallOnGoingView) == -1) {
+        // mStatusBarView.addView(mCallOnGoingView);
+        // }
         mCallOnGoingView.setVisibility(View.VISIBLE);
+        // mCallWidget.show();
     }
 
     public void updateTheme() {

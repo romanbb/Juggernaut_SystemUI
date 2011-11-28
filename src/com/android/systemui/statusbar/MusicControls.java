@@ -172,6 +172,7 @@ public class MusicControls extends FrameLayout {
     }
 
     public void updateControls() {
+
         Slog.d(TAG, "Updating Music Controls Visibility");
         mIsMusicActive = am.isMusicActive();
 
@@ -227,14 +228,6 @@ public class MusicControls extends FrameLayout {
     public void updateInfo() {
         mIsMusicActive = am.isMusicActive();
 
-        if (mIsMusicActive) {
-            mPlayIcon.setVisibility(View.INVISIBLE);
-            mPauseIcon.setVisibility(View.VISIBLE);
-        } else {
-            mPlayIcon.setVisibility(View.VISIBLE);
-            mPauseIcon.setVisibility(View.INVISIBLE);
-        }
-
         if (!mIsAlbumArtSet) {
             Uri uri = getArtworkUri(getContext(), SongId(), AlbumId());
 
@@ -253,6 +246,14 @@ public class MusicControls extends FrameLayout {
         String nowPlayingAlbum = NowPlayingAlbum();
         mNowPlayingInfo.setText(nowPlayingArtist + " - " + nowPlayingAlbum);
 
+        if (mIsMusicActive) {
+            mPlayIcon.setVisibility(View.INVISIBLE);
+            mPauseIcon.setVisibility(View.VISIBLE);
+        } else {
+            mPlayIcon.setVisibility(View.VISIBLE);
+            mPauseIcon.setVisibility(View.INVISIBLE);
+        }
+
     }
 
     public void updateInfo(Uri albumUri) {
@@ -269,6 +270,7 @@ public class MusicControls extends FrameLayout {
         mNowPlayingInfo.setText(nowPlayingArtist + " - " + nowPlayingAlbum);
 
     }
+
     private OnClickListener startPlayer = new OnClickListener() {
 
         @Override
@@ -443,6 +445,7 @@ public class MusicControls extends FrameLayout {
         public void handleMessage(Message m) {
             switch (m.what) {
                 case MSG_UPDATEINFO:
+                    cancelSamsungNotification();
                     updateInfo();
                     break;
                 case MSG_UPDATESAMMYUNFO:

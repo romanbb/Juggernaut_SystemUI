@@ -73,4 +73,7 @@ Mode"</string>
     <string name="screen_timeout_hours">Screen timeout set to: %d hour(s)</string>
     <string name="quickpanel_screen_timeout_text">Timeout</string>
     <string name="quickpanel_lockscreen_text">Lockscreen</string>
+    <string name="end_call">End Call</string>
+    <string name="speaker_phone">Speaker</string>
+    <string name="mute">Mute</string>
 </resources>

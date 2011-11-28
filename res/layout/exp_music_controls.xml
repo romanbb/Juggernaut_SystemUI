@@ -15,7 +15,9 @@
 	android:orientation="horizontal"
 	android:clickable="true"
 	android:focusable="true"
-	android:background="@drawable/stat_power_bg">
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:background="@drawable/quick_panel_app_control_bg">
 
 	<ImageButton
 		android:id="@+id/albumArt"
@@ -25,11 +27,13 @@
 		android:layout_alignParentLeft="true"
 		android:background="@color/transparent"
 		android:scaleType="fitCenter"
-		android:padding="3px" />
+		android:padding="3px"
+		android:layout_marginTop="6dip"
+		android:layout_marginBottom="6dip" />
 
 	<RelativeLayout
 		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
+		android:layout_height="match_parent"
 		android:orientation="horizontal">
 
 		<TextView
@@ -48,7 +52,7 @@
 			android:id="@+id/musicControlPrevious"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:src="@drawable/stat_media_previous"
+			android:src="@drawable/quickpanel_btn_rew"
 			android:paddingLeft="20px"
 			android:paddingRight="20px"
 			android:paddingTop="10px"
@@ -59,7 +63,7 @@
 
 		<ImageButton
 			android:id="@+id/musicControlPlay"
-			android:src="@drawable/stat_media_play"
+			android:src="@drawable/quickpanel_btn_play"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			android:layout_centerHorizontal="true"
@@ -72,7 +76,7 @@
 
 		<ImageButton
 			android:id="@+id/musicControlPause"
-			android:src="@drawable/stat_media_pause"
+			android:src="@drawable/quickpanel_btn_pause"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			android:layout_centerHorizontal="true"
@@ -87,7 +91,7 @@
 			android:id="@+id/musicControlNext"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:src="@drawable/stat_media_next"
+			android:src="@drawable/quickpanel_btn_ff"
 			android:layout_toRightOf="@+id/musicControlPause"
 			android:paddingLeft="20px"
 			android:paddingRight="20px"
