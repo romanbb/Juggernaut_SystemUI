@@ -1,168 +1,193 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.android.systemui.statusbar.ExpandedView
-	android:orientation="vertical"
-	android:focusable="true"
-	android:descendantFocusability="afterDescendants"
-	xmlns:android="http://schemas.android.com/apk/res/android">
-	<com.android.systemui.statusbar.CallOnGoingView
-		android:background="@drawable/status_bar_call_ongoing_background"
-		android:visibility="gone"
-		android:layout_width="match_parent"
-		android:layout_height="80dip"
-		android:id="@+id/call_controls">
-		<LinearLayout
-			android:orientation="horizontal"
-			android:layout_width="fill_parent"
-			android:layout_height="fill_parent"
-			android:layout_weight="1.0">
-			<TextView
-				android:textColor="#ffffffff"
-				android:gravity="right|center"
-				android:id="@id/status_bar_call_ongoing_text"
-				android:visibility="gone"
-				android:layout_width="fill_parent"
-				android:layout_height="fill_parent"
-				android:layout_weight="1.0" />
-			<Chronometer
-				android:gravity="left|center"
-				android:id="@id/status_bar_call_ongoing_duration"
-				android:paddingLeft="5.0dip"
-				android:visibility="gone"
-				android:layout_width="fill_parent"
-				android:layout_height="fill_parent"
-				android:layout_weight="1.0" />
-		</LinearLayout>
-	</com.android.systemui.statusbar.CallOnGoingView>
+    android:orientation="vertical"
+    android:focusable="true"
+    android:descendantFocusability="afterDescendants"
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
-	<LinearLayout
-		android:orientation="vertical"
-		android:id="@id/carrier_label_background"
-		android:background="@drawable/title_bar_portrait"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:baselineAligned="false">
+    <com.android.systemui.statusbar.CallOnGoingView
+        android:background="@drawable/status_bar_call_ongoing_background"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="80dip"
+        android:id="@+id/call_controls">
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:layout_weight="1.0">
+            <TextView
+                android:textColor="#ffffffff"
+                android:gravity="right|center"
+                android:id="@id/status_bar_call_ongoing_text"
+                android:visibility="gone"
+                android:layout_width="fill_parent"
+                android:layout_height="fill_parent"
+                android:layout_weight="1.0" />
+            <Chronometer
+                android:gravity="left|center"
+                android:id="@id/status_bar_call_ongoing_duration"
+                android:paddingLeft="5.0dip"
+                android:visibility="gone"
+                android:layout_width="fill_parent"
+                android:layout_height="fill_parent"
+                android:layout_weight="1.0" />
+        </LinearLayout>
+    </com.android.systemui.statusbar.CallOnGoingView>
 
-		<LinearLayout
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:orientation="horizontal"
-			android:gravity="center_vertical">
+    <com.android.systemui.statusbar.CallWidget
+        android:id="@+id/call_widget"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
-			<com.android.systemui.statusbar.CarrierLabel
-				android:textSize="18.659973dip"
-				android:textColor="@color/status_bar_carrier_label_text"
-				android:layout_gravity="center_vertical"
-				android:id="@id/carrier_label"
-				android:layout_width="0.0dip"
-				android:layout_height="wrap_content"
-				android:layout_marginLeft="14.669983dip"
-				android:layout_marginTop="8.669983dip"
-				android:layout_marginBottom="10.0dip"
-				android:layout_weight="1.0" />
+    <com.android.systemui.statusbar.MusicControls
+        android:id="@+id/exp_music_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
-			<ImageView
-				android:id="@+id/music_toggle_button"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:layout_gravity="center_vertical"
-				android:layout_marginTop="1dp"
-				android:paddingBottom="1dp"
-				android:paddingLeft="15dp"
-				android:paddingRight="15dp"
-				android:src="@drawable/ic_music_toggle"
-				android:visibility="gone" />
 
-			<TextView
-				android:textSize="14.0dip"
-				android:textColor="@color/status_bar_clear_all_button_text"
-				android:gravity="center"
-				android:layout_gravity="center_vertical"
-				android:id="@id/clear_all_button"
-				android:background="@drawable/btn_default_small"
-				android:focusable="true"
-				android:clickable="true"
-				android:layout_width="76.66998dip"
-				android:layout_height="34.0dip"
-				android:layout_marginTop="5.0dip"
-				android:layout_marginRight="4.0dip"
-				android:layout_marginBottom="5.0dip"
-				android:text="@string/status_bar_clear_all_button" />
-		</LinearLayout>
+    <com.android.systemui.ui.SwipeView
+        android:id="@+id/swipe_view"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent">
 
-	</LinearLayout>
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent">
 
-	<com.android.systemui.statusbar.CallWidget
-		android:id="@+id/call_widget"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content" />
+            <LinearLayout
+                android:orientation="vertical"
+                android:id="@id/carrier_label_background"
+                android:background="@drawable/title_bar_portrait"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false">
 
-	<com.android.systemui.statusbar.MusicControls
-		android:id="@+id/exp_music_controls"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content" />
-	<FrameLayout
-		android:layout_width="fill_parent"
-		android:layout_height="wrap_content"
-		android:layout_weight="1.0">
-		<ScrollView
-			android:id="@id/scroll"
-			android:fadingEdge="none"
-			android:layout_width="fill_parent"
-			android:layout_height="fill_parent"
-			android:overScrollMode="ifContentScrolls">
-			<com.android.systemui.statusbar.NotificationLinearLayout
-				android:orientation="vertical"
-				android:id="@id/notificationLinearLayout"
-				android:layout_width="fill_parent"
-				android:layout_height="wrap_content">
-				<TextView
-					android:textSize="14.669983dip"
-					android:textColor="@color/notification_header_text_color"
-					android:gravity="center_vertical"
-					android:id="@id/noNotificationsTitle"
-					android:background="@drawable/quickpanel_title_background"
-					android:paddingLeft="13.329987dip"
-					android:layout_width="fill_parent"
-					android:layout_height="26.669983dip"
-					android:text="@string/status_bar_no_notifications_title" />
-				<TextView
-					android:textSize="14.669983dip"
-					android:textColor="@color/notification_header_text_color"
-					android:gravity="center_vertical"
-					android:id="@id/ongoingTitle"
-					android:background="@drawable/quickpanel_title_background"
-					android:paddingLeft="13.329987dip"
-					android:layout_width="fill_parent"
-					android:layout_height="26.669983dip"
-					android:text="@string/status_bar_ongoing_events_title" />
-				<LinearLayout
-					android:orientation="vertical"
-					android:id="@id/ongoingItems"
-					android:layout_width="fill_parent"
-					android:layout_height="wrap_content" />
-				<TextView
-					android:textSize="14.669983dip"
-					android:textColor="@color/notification_header_text_color"
-					android:gravity="center_vertical"
-					android:id="@id/latestTitle"
-					android:background="@drawable/quickpanel_title_background"
-					android:paddingLeft="13.329987dip"
-					android:layout_width="fill_parent"
-					android:layout_height="26.669983dip"
-					android:text="@string/status_bar_latest_events_title" />
-				<LinearLayout
-					android:orientation="vertical"
-					android:id="@id/latestItems"
-					android:layout_width="fill_parent"
-					android:layout_height="wrap_content" />
-			</com.android.systemui.statusbar.NotificationLinearLayout>
-		</ScrollView>
-		<ImageView
-			android:id="@id/title_bar_shadow"
-			android:visibility="gone"
-			android:layout_width="fill_parent"
-			android:layout_height="fill_parent"
-			android:src="@drawable/title_bar_shadow"
-			android:scaleType="fitXY" />
-	</FrameLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <com.android.systemui.statusbar.CarrierLabel
+                        android:textSize="18.659973dip"
+                        android:textColor="@color/status_bar_carrier_label_text"
+                        android:layout_gravity="center_vertical"
+                        android:id="@id/carrier_label"
+                        android:layout_width="0.0dip"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="14.669983dip"
+                        android:layout_marginTop="8.669983dip"
+                        android:layout_marginBottom="10.0dip"
+                        android:layout_weight="1.0" />
+
+                    <ImageView
+                        android:id="@+id/music_toggle_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginTop="1dp"
+                        android:paddingBottom="1dp"
+                        android:paddingLeft="15dp"
+                        android:paddingRight="15dp"
+                        android:src="@drawable/ic_music_toggle"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:textSize="14.0dip"
+                        android:textColor="@color/status_bar_clear_all_button_text"
+                        android:gravity="center"
+                        android:layout_gravity="center_vertical"
+                        android:id="@id/clear_all_button"
+                        android:background="@drawable/btn_default_small"
+                        android:focusable="true"
+                        android:clickable="true"
+                        android:layout_width="76.66998dip"
+                        android:layout_height="34.0dip"
+                        android:layout_marginTop="5.0dip"
+                        android:layout_marginRight="4.0dip"
+                        android:layout_marginBottom="5.0dip"
+                        android:text="@string/status_bar_clear_all_button" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <FrameLayout
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.0">
+                <ScrollView
+                    android:id="@id/scroll"
+                    android:fadingEdge="none"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:overScrollMode="ifContentScrolls">
+                    <com.android.systemui.statusbar.NotificationLinearLayout
+                        android:orientation="vertical"
+                        android:id="@id/notificationLinearLayout"
+                        android:layout_width="fill_parent"
+                        android:layout_height="wrap_content">
+                        <TextView
+                            android:textSize="14.669983dip"
+                            android:textColor="@color/notification_header_text_color"
+                            android:gravity="center_vertical"
+                            android:id="@id/noNotificationsTitle"
+                            android:background="@drawable/quickpanel_title_background"
+                            android:paddingLeft="13.329987dip"
+                            android:layout_width="fill_parent"
+                            android:layout_height="26.669983dip"
+                            android:text="@string/status_bar_no_notifications_title" />
+                        <TextView
+                            android:textSize="14.669983dip"
+                            android:textColor="@color/notification_header_text_color"
+                            android:gravity="center_vertical"
+                            android:id="@id/ongoingTitle"
+                            android:background="@drawable/quickpanel_title_background"
+                            android:paddingLeft="13.329987dip"
+                            android:layout_width="fill_parent"
+                            android:layout_height="26.669983dip"
+                            android:text="@string/status_bar_ongoing_events_title" />
+                        <LinearLayout
+                            android:orientation="vertical"
+                            android:id="@id/ongoingItems"
+                            android:layout_width="fill_parent"
+                            android:layout_height="wrap_content" />
+                        <TextView
+                            android:textSize="14.669983dip"
+                            android:textColor="@color/notification_header_text_color"
+                            android:gravity="center_vertical"
+                            android:id="@id/latestTitle"
+                            android:background="@drawable/quickpanel_title_background"
+                            android:paddingLeft="13.329987dip"
+                            android:layout_width="fill_parent"
+                            android:layout_height="26.669983dip"
+                            android:text="@string/status_bar_latest_events_title" />
+                        <LinearLayout
+                            android:orientation="vertical"
+                            android:id="@id/latestItems"
+                            android:layout_width="fill_parent"
+                            android:layout_height="wrap_content" />
+                    </com.android.systemui.statusbar.NotificationLinearLayout>
+                </ScrollView>
+                <ImageView
+                    android:id="@id/title_bar_shadow"
+                    android:visibility="gone"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:src="@drawable/title_bar_shadow"
+                    android:scaleType="fitXY" />
+            </FrameLayout>
+
+        </LinearLayout>
+
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:id="@+id/page2">
+
+        </LinearLayout>
+    </com.android.systemui.ui.SwipeView>
 </com.android.systemui.statusbar.ExpandedView>
