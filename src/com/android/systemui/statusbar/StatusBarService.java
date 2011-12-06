@@ -16,10 +16,6 @@
 
 package com.android.systemui.statusbar;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
-import java.util.ArrayList;
-
 import android.app.ActivityManagerNative;
 import android.app.Dialog;
 import android.app.Notification;
@@ -56,6 +52,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
+import android.view.View.OnLongClickListener;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -76,8 +73,11 @@ import com.android.internal.statusbar.StatusBarIconList;
 import com.android.internal.statusbar.StatusBarNotification;
 import com.android.systemui.R;
 import com.android.systemui.statusbar.policy.StatusBarPolicy;
-import com.android.systemui.statusbar.powerwidget.PowerWidget;
 import com.android.systemui.statusbar.quickpanel.QuickSettingsView;
+
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
+import java.util.ArrayList;
 
 public class StatusBarService extends Service implements CommandQueue.Callbacks {
 
@@ -184,6 +184,10 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     MusicControls mMusicControls;
 
     public static ImageView mMusicToggleButton;
+
+    boolean swipeToClearNotifications = true;
+    boolean longPressToClearNotifications = false;
+    boolean useAlternativeToggleLayout = false;
 
     private class ExpandedDialog extends Dialog {
 
@@ -292,6 +296,8 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 null);
         expanded.mService = this;
 
+        LinearLayout page2 = (LinearLayout) expanded.findViewById(R.id.page2);
+
         StatusBarView sb = (StatusBarView) View.inflate(context, R.layout.status_bar, null);
         sb.mService = this;
 
@@ -349,9 +355,15 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(mBroadcastReceiver, filter);
 
-        QuickSettingsView qsv = (QuickSettingsView) View.inflate(context,
-                R.layout.quickpanel_quick_settings, null);
-        mExpandedView.addView(qsv, 0);
+        if (useAlternativeToggleLayout) {
+            QuickSettingsView qsv = (QuickSettingsView) View.inflate(context,
+                    R.layout.quickpanel_quick_settings_page, null);
+            page2.addView(qsv, 0);
+        } else {
+            QuickSettingsView qsv = (QuickSettingsView) View.inflate(context,
+                    R.layout.quickpanel_quick_settings, null);
+            expanded.addView(qsv, 0);
+        }
 
         // if (useCustomMusic) {
         // music
@@ -612,17 +624,19 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
                 R.layout.status_bar_latest_event, parent, false);
         if ((n.flags & Notification.FLAG_ONGOING_EVENT) == 0
                 && (n.flags & Notification.FLAG_NO_CLEAR) == 0) {
-            row.setOnSwipeCallback(new Runnable() {
 
-                public void run() {
-                    try {
-                        mBarService.onNotificationClear(notification.pkg, notification.tag,
-                                notification.id);
-                    } catch (RemoteException e) {
-                        // Skip it, don't crash.
+            if (swipeToClearNotifications)
+                row.setOnSwipeCallback(new Runnable() {
+
+                    public void run() {
+                        try {
+                            mBarService.onNotificationClear(notification.pkg, notification.tag,
+                                    notification.id);
+                        } catch (RemoteException e) {
+                            // Skip it, don't crash.
+                        }
                     }
-                }
-            });
+                });
         }
 
         // bind the click event to the content area
@@ -634,6 +648,20 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
             content.setOnClickListener(new Launcher(contentIntent, notification.pkg,
                     notification.tag, notification.id));
         }
+
+        if (longPressToClearNotifications)
+            content.setOnLongClickListener(new OnLongClickListener() {
+
+                @Override
+                public boolean onLongClick(View v) {
+                    try {
+                        mBarService.onNotificationClear(notification.pkg, notification.tag,
+                                notification.id);
+                    } catch (RemoteException e) {
+                    }
+                    return true;
+                }
+            });
 
         View expanded = null;
         Exception exception = null;
@@ -841,6 +869,7 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
         visibilityChanged(true);
 
         mMusicControls.updateControls();
+        mMusicControls.setProperVisibility();
         mCallWidget.updateWidget();
 
         updateExpandedViewPos(EXPANDED_LEAVE_ALONE);
@@ -1797,6 +1826,16 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks 
     public void updateSettings() {
         useCustomMusic = Settings.System.getInt(getContentResolver(),
                 "tweaks_use_custom_music_controls", 1) == 1;
+
+        swipeToClearNotifications = Settings.System.getInt(getContentResolver(),
+                "tweaks_swipe_to_clear_notifications", 1) == 1;
+
+        longPressToClearNotifications = Settings.System.getInt(getContentResolver(),
+                "tweaks_long_press_to_clear_notifications", 0) == 1;
+
+        useAlternativeToggleLayout = Settings.System.getInt(getContentResolver(),
+                "tweaks_use_alternative_toggle_layout", 0) == 1;
+
         if (!useCustomMusic) {
             mMusicToggleButton.setVisibility(View.GONE);
             mMusicControls.disable();

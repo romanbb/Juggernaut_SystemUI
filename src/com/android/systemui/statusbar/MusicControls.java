@@ -45,6 +45,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.ToggleButton;
 
 import com.android.systemui.R;
 
@@ -90,7 +91,12 @@ public class MusicControls extends FrameLayout {
     int noMusicPLayingCounter = 0;
     boolean mWasMusicActive = false;
 
+    boolean didUserHideMusic = false;
+
     private LinearLayout ll;
+
+    public static final String CALL_STARTED_INTENT = "com.teamkang.musiccontrols.callstarted";
+    public static final String CALL_ENDED_INTENT = "com.teamkang.musiccontrols.callended";
 
     private MusicHandler musicHandler = new MusicHandler();
 
@@ -104,6 +110,8 @@ public class MusicControls extends FrameLayout {
         iF.addAction("com.android.music.playstatechanged");
         iF.addAction("com.android.music.metachanged");
         iF.addAction("com.android.music.musicservicecommand.mediainfo");
+        iF.addAction(CALL_STARTED_INTENT);
+        iF.addAction(CALL_ENDED_INTENT);
         mContext.registerReceiver(mMusicReceiver, iF);
     }
 
@@ -176,6 +184,9 @@ public class MusicControls extends FrameLayout {
         Slog.d(TAG, "Updating Music Controls Visibility");
         mIsMusicActive = am.isMusicActive();
 
+        if (didUserHideMusic)
+            return;
+
         if (!mIsMusicActive && getVisibility() == View.VISIBLE) {
 
             if (noMusicPLayingCounter++ < 2) {
@@ -184,7 +195,6 @@ public class MusicControls extends FrameLayout {
                 mWasMusicActive = false;
                 noMusicPLayingCounter = 0;
             }
-
         } else {
             mWasMusicActive = false;
         }
@@ -218,7 +228,10 @@ public class MusicControls extends FrameLayout {
     public void visibilityToggled() {
         if (this.getVisibility() == View.VISIBLE) {
             setVisibility(View.GONE);
+            didUserHideMusic = true;
         } else {
+            didUserHideMusic = false;
+            updateInfo();
             setVisibility(View.VISIBLE);
         }
     }
@@ -343,7 +356,7 @@ public class MusicControls extends FrameLayout {
     }
 
     private Uri mMediaUri;
-    private boolean updateAlbumArt = false;
+    private boolean musicHiddenBecauseOfCall = false;
 
     private BroadcastReceiver mMusicReceiver = new BroadcastReceiver() {
 
@@ -351,24 +364,39 @@ public class MusicControls extends FrameLayout {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
 
-            if (action.equals("com.android.music.musicservicecommand.mediainfo")) {
+            if (action.equals(CALL_STARTED_INTENT)) {
+                if (getVisibility() == View.VISIBLE) {
+                    musicHiddenBecauseOfCall = true;
+                    visibilityToggled();
+                }
+            } else if (action.equals(CALL_ENDED_INTENT)) {
+                if (musicHiddenBecauseOfCall) {
+                    musicHiddenBecauseOfCall = false;
+                    visibilityToggled();
+                }
+            } else if (action.equals("com.android.music.musicservicecommand.mediainfo")) {
                 Slog.e(TAG, "Intent from Sammy");
+
                 mMediaUri = intent.getParcelableExtra("mediauri");
 
-                Cursor c = getContext().getContentResolver().query(mMediaUri, null, null, null,
-                        null);
-                if (c != null && c.getCount() != 0) {
-                    c.moveToFirst();
-                    // mTrack = c.getString(c.getColumnIndexOrThrow("title"));
-                    // mArtist = c.getString(c.getColumnIndexOrThrow("artist"));
-                    mAlbumId = Long.parseLong(c.getString(c.getColumnIndexOrThrow("album_id")));
-                    c.close();
-                    mIsAlbumArtSet = false;
-                    // updateInfo(getArtworkUri(context, 0, mAlbumId));
+                if (mMediaUri != null) {
+                    Cursor c = getContext().getContentResolver().query(mMediaUri, null, null, null,
+                            null);
+                    if (c != null && c.getCount() != 0) {
+                        c.moveToFirst();
+                        // mTrack =
+                        // c.getString(c.getColumnIndexOrThrow("title"));
+                        // mArtist =
+                        // c.getString(c.getColumnIndexOrThrow("artist"));
+                        mAlbumId = Long.parseLong(c.getString(c.getColumnIndexOrThrow("album_id")));
+                        c.close();
+                        mIsAlbumArtSet = false;
+                        // updateInfo(getArtworkUri(context, 0, mAlbumId));
+                    }
                     musicHandler.removeMessages(MSG_UPDATEINFO);
                     musicHandler.sendEmptyMessage(MSG_UPDATESAMMYUNFO);
-
                 }
+
             } else {
 
                 Slog.e(TAG, action);
@@ -453,5 +481,9 @@ public class MusicControls extends FrameLayout {
                     break;
             }
         }
+    }
+
+    public void setProperVisibility() {
+
     }
 }
